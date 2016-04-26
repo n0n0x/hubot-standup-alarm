@@ -11,7 +11,6 @@
 # Commands:
 #   hubot standup help - See a help document explaining how to use.
 #   hubot create standup hh:mm - Creates a standup at hh:mm every weekday for this room
-#   hubot create standup hh:mm at location/url - Creates a standup at hh:mm (UTC) every weekday for this chat room with a reminder for a physical location or url
 #   hubot create standup Monday@hh:mm - Creates a standup at hh:mm every Monday for this room
 #   hubot create standup hh:mm UTC+2 - Creates a standup at hh:mm every weekday for this room (relative to UTC)
 #   hubot create standup Monday@hh:mm UTC+2 - Creates a standup at hh:mm every Monday for this room (relative to UTC)
@@ -77,9 +76,10 @@ module.exports = (robot) ->
     if standups.length > 0
       # Do some magic here to loop through the standups and find the one for right now
       theStandup = standups.filter(standupShouldFire)
-      message = "#{PREPEND_MESSAGE} #{_.sample(STANDUP_MESSAGES)} #{theStandup[0].location}"
+      message = "@Team #{theStandup[0].message}"
     else
-      message = "#{PREPEND_MESSAGE} #{_.sample(STANDUP_MESSAGES)} #{standups[0].location}"
+      message = "@Team #{standups[0].message}"
+
     robot.messageRoom room, message
     return
 
@@ -96,9 +96,13 @@ module.exports = (robot) ->
     return validateTimePattern.test time
 
   # Stores a standup in the brain.
-  saveStandup = (room, dayOfWeek, time, utcOffset, location, msg) ->
+  saveStandup = (room, dayOfWeek, time, utcOffset, message, msg) ->
     if !timeIsValid time
       msg.send "Sorry, but I couldn't find a time to create the standup at."
+      return
+
+    if not message
+      msg.send 'You haven\'t set any message for this standup!'
       return
 
     standups = getStandups()
@@ -107,11 +111,12 @@ module.exports = (robot) ->
       dayOfWeek: dayOfWeek
       time: time
       utc: utcOffset
-      location: location.trim()
+      message: message.trim()
+
     standups.push newStandup
     updateBrain standups
     displayDate = dayOfWeek or 'weekday'
-    msg.send 'Ok, from now on I\'ll remind this room to do a standup every ' + displayDate + ' at ' + time + (if location then location else '')
+    msg.send 'Ok, from now on I\'ll remind this room to do a standup every ' + displayDate + ' at ' + time
     return
 
   # Updates the brain's standup knowledge.
@@ -154,7 +159,6 @@ module.exports = (robot) ->
     message.push ''
     message.push robot.name + ' create standup hh:mm - I\'ll remind you to standup in this room at hh:mm every weekday.'
     message.push robot.name + ' create standup hh:mm UTC+2 - I\'ll remind you to standup in this room at hh:mm UTC+2 every weekday.'
-    message.push robot.name + ' create standup hh:mm at location/url - Creates a standup at hh:mm (UTC) every weekday for this chat room with a reminder for a physical location or url'
     message.push robot.name + ' create standup Monday@hh:mm UTC+2 - I\'ll remind you to standup in this room at hh:mm UTC+2 every Monday.'
     message.push robot.name + ' list standups - See all standups for this room.'
     message.push robot.name + ' list all standups- Be nosey and see when other rooms have their standup.'
@@ -173,8 +177,8 @@ module.exports = (robot) ->
         text =  'Time: ' + standup.time
         if standup.utc
           text += ' UTC' + standup.utc
-        if standup.location
-          text +=', Location: '+ standup.location
+        if standup.message
+          text +=', Message: '+ standup.message
         text
       ))
       msg.send standupsText.join('\n')
@@ -189,8 +193,8 @@ module.exports = (robot) ->
         text =  'Room: ' + standup.room + ', Time: ' + standup.time
         if standup.utc
           text += ' UTC' + standup.utc
-        if standup.location
-          text +=', Location: '+ standup.location
+        if standup.message
+          text +=', Message: '+ standup.message
         text
       ))
       msg.send standupsText.join('\n')
@@ -215,16 +219,16 @@ module.exports = (robot) ->
   new cronJob('1 * * * * 1-5', checkStandups, null, true)
 
   # Global regex should match all possible options
-  robot.respond /(.*)standups? ?(?:([A-z]*)\s?\@\s?)?((?:[01]?[0-9]|2[0-4]):[0-5]?[0-9])?(?: UTC([- +]\d\d?))?(.*)/i, (msg) ->
+  robot.respond /(.*?)standups? ?(?:([A-z]*)\s?\@\s?)?((?:[01]?[0-9]|2[0-4]):[0-5]?[0-9])?(?: UTC([- +]\d\d?))?( \"(.*)\")?/i, (msg) ->
     action = msg.match[1].trim().toLowerCase()
     dayOfWeek = msg.match[2]
     time = msg.match[3]
     utcOffset = msg.match[4]
-    location = msg.match[5]
+    message = msg.match[5]
     room = findRoom msg
 
     switch action
-      when 'create' then saveStandup room, dayOfWeek, time, utcOffset, location, msg
+      when 'create' then saveStandup room, dayOfWeek, time, utcOffset, message, msg
       when 'list' then listStandupsForRoom room, msg
       when 'list all' then listStandupsForAllRooms msg
       when 'delete' then clearSpecificStandupForRoom room, time, msg
